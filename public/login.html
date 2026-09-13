@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login - IoT Monitoring</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .box {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      width: 320px;
+    }
+    h2 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #2c3e50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #34495e;
+    }
+    .toggle {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 14px;
+      color: #2980b9;
+      cursor: pointer;
+    }
+    .error {
+      color: #c0392b;
+      font-size: 14px;
+      text-align: center;
+      margin-top: 10px;
+    }
+    #nameField {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="box">
+    <h2 id="formTitle">Login</h2>
+
+    <input type="text" id="nameField" placeholder="Full name">
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+
+    <button id="submitBtn">Login</button>
+
+    <div class="toggle" id="toggleMode">Don't have an account? Register</div>
+    <div class="error" id="errorMsg"></div>
+  </div>
+
+  <script>
+    let isRegisterMode = false;
+
+    const formTitle = document.getElementById('formTitle');
+    const nameField = document.getElementById('nameField');
+    const submitBtn = document.getElementById('submitBtn');
+    const toggleMode = document.getElementById('toggleMode');
+    const errorMsg = document.getElementById('errorMsg');
+
+    toggleMode.addEventListener('click', function () {
+      isRegisterMode = !isRegisterMode;
+
+      if (isRegisterMode) {
+        formTitle.textContent = 'Register';
+        submitBtn.textContent = 'Register';
+        toggleMode.textContent = 'Already have an account? Login';
+        nameField.style.display = 'block';
+      } else {
+        formTitle.textContent = 'Login';
+        submitBtn.textContent = 'Login';
+        toggleMode.textContent = "Don't have an account? Register";
+        nameField.style.display = 'none';
+      }
+
+      errorMsg.textContent = '';
+    });
+
+    submitBtn.addEventListener('click', async function () {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const name = document.getElementById('nameField').value;
+
+      errorMsg.textContent = '';
+
+      if (!email || !password) {
+        errorMsg.textContent = 'Please fill in all fields';
+        return;
+      }
+
+      const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+      const payload = isRegisterMode ? { email, password, name } : { email, password };
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          errorMsg.textContent = data.error || 'Something went wrong';
+          return;
+        }
+
+        if (isRegisterMode) {
+          errorMsg.style.color = '#27ae60';
+          errorMsg.textContent = 'Registered successfully! Please login.';
+          toggleMode.click();
+        } else {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('userName', data.user.name || data.user.email);
+          window.location.href = '/index.html';
+        }
+
+      } catch (err) {
+        errorMsg.textContent = 'Network error, please try again';
+      }
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IoT Monitoring Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #2c3e50;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    th {
+      background-color: #f0f0f0;
+    }
+    .alert-row {
+      color: #c0392b;
+      font-weight: bold;
+    }
+    .refresh-note {
+      color: #888;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+    <div id="userBar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span id="welcomeText" style="color:#555;"></span>
+        <button id="logoutBtn" style="padding:6px 14px; background:#c0392b; color:white; border:none; border-radius:4px; cursor:pointer;">Logout</button>
+    </div>
+
+  <h1>IoT Monitoring Dashboard</h1>
+  <p class="refresh-note">Auto-refreshes every 5 seconds</p>
+
+  <div class="card">
+    <h2>Latest Sensor Readings</h2>
+    <table id="readingsTable">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>Sensor Type</th>
+          <th>Value</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="readingsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+  <h2>Historical Sensor Readings </h2>
+
+  <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap;">
+    <input
+      type="text"
+      id="hist_deviceId"
+      placeholder="Device ID (e.g. sensor-01)"
+      style="padding:6px; flex:1; min-width:150px;"
+    >
+
+    <input
+      type="text"
+      id="hist_sensorType"
+      placeholder="Sensor type (e.g. temperature)"
+      style="padding:6px; flex:1; min-width:150px;"
+    >
+
+    <button
+      id="hist_searchBtn"
+      style="padding:6px 14px; background:#2980b9; color:white; border:none; border-radius:4px; cursor:pointer;"
+    >
+      Load History
+    </button>
+  </div>
+
+  <div
+    id="hist_message"
+    style="font-size:13px; margin-bottom:10px;"
+  ></div>
+
+  <table id="historyTable">
+    <thead>
+      <tr>
+        <th>Device</th>
+        <th>Sensor Type</th>
+        <th>Value</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+
+    <tbody id="historyBody"></tbody>
+  </table>
+</div>
+
+  <div class="card">
+    <h2>Recent Alerts</h2>
+    <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap;">
+        <input type="text" id="al_filterDevice" placeholder="Filter by device_id" style="padding:6px; flex:1; min-width:150px;">
+        <button id="al_filterBtn" style="padding:6px 14px; background:#2980b9; color:white; border:none; border-radius:4px; cursor:pointer;">Filter</button>
+        <button id="al_clearBtn" style="padding:6px 14px; background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer;">Clear</button>
+    </div>
+    <table id="alertsTable">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>Message</th>
+          <th>Time</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="alertsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Current Thresholds</h2>
+    <div style="display:flex; gap:8px; margin-bottom:15px; flex-wrap:wrap;">
+        <input type="text" id="th_sensorType" placeholder="Sensor type (e.g. temperature)" style="padding:6px; flex:1; min-width:150px;">
+        <input type="number" id="th_min" placeholder="Min value" style="padding:6px; width:100px;">
+        <input type="number" id="th_max" placeholder="Max value" style="padding:6px; width:100px;">
+        <button id="th_saveBtn" style="padding:6px 14px; background:#27ae60; color:white; border:none; border-radius:4px; cursor:pointer;">Save Threshold</button>
+    </div>
+    <div id="th_message" style="font-size:13px; margin-bottom:10px;"></div>
+    <table id="thresholdsTable">
+      <thead>
+        <tr>
+          <th>Sensor Type</th>
+          <th>Min</th>
+          <th>Max</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="thresholdsBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+  const token = localStorage.getItem('token');
+
+  if (!token) {
+    window.location.href = '/login.html';
+  }
+
+  document.getElementById('welcomeText').textContent =
+    'Welcome, ' + (localStorage.getItem('userName') || 'User');
+
+  document.getElementById('logoutBtn').addEventListener('click', function () {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userName');
+    window.location.href = '/login.html';
+  });
+
+  async function loadReadings() {
+    const response = await fetch('/api/readings');
+    const data = await response.json();
+    const tbody = document.getElementById('readingsBody');
+    tbody.innerHTML = '';
+
+    data.readings.slice(0, 10).forEach(function (reading) {
+      const row = document.createElement('tr');
+      row.innerHTML =
+        '<td>' + reading.device_id + '</td>' +
+        '<td>' + reading.sensor_type + '</td>' +
+        '<td>' + reading.value + ' ' + (reading.unit || '') + '</td>' +
+        '<td>' + new Date(reading.recorded_at).toLocaleString() + '</td>';
+      tbody.appendChild(row);
+    });
+  }
+
+  let currentDeviceFilter = '';
+
+    async function loadAlerts() {
+    const url = currentDeviceFilter
+        ? '/api/alerts?device_id=' + encodeURIComponent(currentDeviceFilter)
+        : '/api/alerts';
+
+    const response = await fetch(url);
+    const data = await response.json();
+    const tbody = document.getElementById('alertsBody');
+    tbody.innerHTML = '';
+
+    data.alerts.slice(0, 10).forEach(function (alert) {
+        const row = document.createElement('tr');
+        row.className = 'alert-row';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.style.cssText = 'padding:4px 10px; background:#c0392b; color:white; border:none; border-radius:4px; cursor:pointer;';
+
+        deleteBtn.addEventListener('click', async function () {
+        const url = '/api/alerts/' + encodeURIComponent(alert.device_id) + '/' + encodeURIComponent(alert.triggered_at);
+
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token },
+        });
+
+        if (response.ok) {
+            loadAlerts();
+        } else {
+            alert('Failed to delete alert. Please login again.');
+        }
+        });
+
+        const actionCell = document.createElement('td');
+        actionCell.appendChild(deleteBtn);
+
+        row.innerHTML =
+        '<td>' + alert.device_id + '</td>' +
+        '<td>' + alert.message + '</td>' +
+        '<td>' + new Date(alert.triggered_at).toLocaleString() + '</td>';
+        row.appendChild(actionCell);
+
+        tbody.appendChild(row);
+    });
+    }
+
+    document.getElementById('al_filterBtn').addEventListener('click', function () {
+    currentDeviceFilter = document.getElementById('al_filterDevice').value;
+    loadAlerts();
+    });
+
+    document.getElementById('al_clearBtn').addEventListener('click', function () {
+    currentDeviceFilter = '';
+    document.getElementById('al_filterDevice').value = '';
+    loadAlerts();
+    });
+
+  async function loadThresholds() {
+  const response = await fetch('/api/thresholds');
+  const data = await response.json();
+
+  const tbody = document.getElementById('thresholdsBody');
+  tbody.innerHTML = '';
+
+  data.thresholds.forEach(function (threshold) {
+    const row = document.createElement('tr');
+
+    // Sensor type
+    const sensorCell = document.createElement('td');
+    sensorCell.textContent = threshold.sensor_type;
+
+    // Min
+    const minCell = document.createElement('td');
+    minCell.textContent =
+      threshold.min_value !== undefined
+        ? threshold.min_value
+        : '-';
+
+    // Max
+    const maxCell = document.createElement('td');
+    maxCell.textContent =
+      threshold.max_value !== undefined
+        ? threshold.max_value
+        : '-';
+
+    // Delete button
+    const actionCell = document.createElement('td');
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Delete';
+
+    deleteBtn.style.cssText =
+      'padding:4px 10px;' +
+      'background:#c0392b;' +
+      'color:white;' +
+      'border:none;' +
+      'border-radius:4px;' +
+      'cursor:pointer;';
+
+    deleteBtn.addEventListener('click', async function () {
+      const confirmed = confirm(
+        'Delete threshold for ' + threshold.sensor_type + '?'
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          '/api/thresholds/' +
+          encodeURIComponent(threshold.sensor_type),
+          {
+            method: 'DELETE',
+            headers: {
+              'Authorization': 'Bearer ' + token
+            }
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          alert(result.error || 'Failed to delete threshold');
+          return;
+        }
+
+        loadThresholds();
+
+      } catch (err) {
+        console.error('Delete threshold error:', err);
+        alert('Network error while deleting threshold');
+      }
+    });
+
+    actionCell.appendChild(deleteBtn);
+
+    row.appendChild(sensorCell);
+    row.appendChild(minCell);
+    row.appendChild(maxCell);
+    row.appendChild(actionCell);
+
+    tbody.appendChild(row);
+  });
+}
+
+  function loadAll() {
+    loadReadings();
+    loadAlerts();
+    loadThresholds();
+  }
+
+    document.getElementById('th_saveBtn').addEventListener('click', async function () {
+    const sensorType = document.getElementById('th_sensorType').value;
+    const minValue = document.getElementById('th_min').value;
+    const maxValue = document.getElementById('th_max').value;
+    const msgBox = document.getElementById('th_message');
+
+    msgBox.textContent = '';
+
+    if (!sensorType) {
+        msgBox.style.color = '#c0392b';
+        msgBox.textContent = 'Sensor type is required';
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/thresholds', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify({
+            sensor_type: sensorType,
+            min_value: minValue ? parseFloat(minValue) : undefined,
+            max_value: maxValue ? parseFloat(maxValue) : undefined,
+        }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+        msgBox.style.color = '#c0392b';
+        msgBox.textContent = data.error || 'Failed to save threshold';
+        return;
+        }
+
+        msgBox.style.color = '#27ae60';
+        msgBox.textContent = 'Threshold saved successfully';
+        document.getElementById('th_sensorType').value = '';
+        document.getElementById('th_min').value = '';
+        document.getElementById('th_max').value = '';
+        loadThresholds();
+
+    } catch (err) {
+        msgBox.style.color = '#c0392b';
+        msgBox.textContent = 'Network error';
+    }
+    });
+
+  loadAll();
+  setInterval(loadAll, 5000);
+
+    async function loadHistory() {
+    const deviceId = document.getElementById('hist_deviceId').value.trim();
+    const sensorType = document.getElementById('hist_sensorType').value.trim();
+    const message = document.getElementById('hist_message');
+    const tbody = document.getElementById('historyBody');
+
+    message.textContent = 'Loading historical data from Athena...';
+    tbody.innerHTML = '';
+
+    try {
+        const params = new URLSearchParams();
+
+        if (deviceId) {
+        params.append('device_id', deviceId);
+        }
+
+        if (sensorType) {
+        params.append('sensor_type', sensorType);
+        }
+
+        const response = await fetch(
+        `/api/readings/history?${params.toString()}`
+        );
+
+        if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+        }
+
+        const readings = await response.json();
+
+        if (!readings.length) {
+        message.textContent = 'No historical readings found.';
+        return;
+        }
+
+        readings.forEach(reading => {
+        const row = document.createElement('tr');
+
+        row.innerHTML = `
+            <td>${reading.device_id ?? '-'}</td>
+            <td>${reading.sensor_type ?? '-'}</td>
+            <td>${reading.value ?? '-'} ${reading.unit ?? ''}</td>
+            <td>${reading.recorded_at
+            ? new Date(reading.recorded_at).toLocaleString()
+            : '-'}</td>
+        `;
+
+        tbody.appendChild(row);
+        });
+
+        message.textContent =
+        `Loaded ${readings.length} historical reading(s) from Athena.`;
+
+    } catch (error) {
+        console.error('History error:', error);
+        message.textContent = `Failed to load history: ${error.message}`;
+    }
+    }
+
+    document
+    .getElementById('hist_searchBtn')
+    .addEventListener('click', loadHistory);
+</script>
+
+</body>
+</html>
